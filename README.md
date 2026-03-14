@@ -1,1 +1,67 @@
-🚀 ARG-MAPPO: Spatiotemporal Attention-Driven Intrinsic Motivation这是一个为多智能体强化学习（MARL）深度定制的算法框架。它以 MAPPO 为主干，融合了 AREL (Agent-Temporal Attention) 的核心思想，创造性地构建了一套基于**“全局惊奇度分配”**的内在动机（好奇心）探索机制。为了保证底层数学的严密性与工程训练的极度稳定，本代码在纯粹的注意力分配之外，加装了三层物理防御装甲，彻底解决了多智能体好奇心探索中的一系列致命难题。🧠 核心架构：从物理观测到好奇心驱动的底层拆解本算法的信息流并非简单的堆砌，而是遵循严格的张量降维与重构逻辑。整个 learn 过程可以被拆解为以下四个递进的阶段：阶段一：🔍 惊奇度的产生 (Curiosity Generation)组件：GlobalRewardPredictor ($B\_Net$)底层逻辑：如何定义“未知”？网络 B 试图根据当前状态 $s$ 和联合动作 $u$ 来预测环境的真实奖励 $r$。当环境出现网络 B 无法预测的动态时（预测误差极大），我们将其定义为**“局部惊奇度” (Local Surprise)**。计算目标：收集一整条轨迹上的预测误差，加和得到回合总惊奇度 $E_{total}$。阶段二：🌌 时空重构与信用分配 (Spatiotemporal Redistribution)组件：Time_Agent_Transformer ($ARG\_Net$)底层逻辑：总惊奇度有了，但究竟是哪一秒、哪个智能体的动作导致了这份惊奇？特征提炼：通过 MLP 将冷冰冰的原始高维物理观测 $E$ 投影到富含语义的隐空间。纵向扫描 (Temporal Attention)：加入因果掩码（Causality Mask），寻找时间序列上的“转折点”。横向检索 (Agent Attention)：在同一个时间截面上，计算智能体之间的相互作用强度，找出“关键先生”。置换不变坍缩 (Deep Sets)：将融合了历史与同伴特征的 $Z$ 矩阵，经过求和抹平智能体顺序，最终坍缩为每个时间步的预测内在奖励 $\hat{r}_t$。双重约束优化：回归对齐：$\sum \hat{r}_t \approx E_{total}$（总分必须对上）。方差正则：$\omega \cdot Var(\hat{r}_t)$（拒绝大锅饭，强迫拉开得分差距）。阶段三：🛡️ 三重底层防御装甲 (The Triple Defense System)直接将好奇心注入 PPO 是灾难性的。我们在信息流融合前（r_mixed = r + beta * e_predict）布置了三道关卡：防“吵闹的电视机”：奖励缓冲区门控 (RewardBufferGate)机制：维护一个包含最近 320 局得分的滑动队列作为“及格线”。作用：如果智能体为了追求惊奇而乱玩（导致环境得分低于均值），直接物理截断其好奇心奖励（乘 0）。只有创造了“有价值突破”的惊奇才被放行。防“PPO 价值评估剥离”：动态 Batch 标准化机制：对通过门控的内在奖励进行局部的 $\mu=0, \sigma=1$ 标准化，并硬性截断极值。作用：防止巨大且方差极高的话奇心奖励瞬间撑爆 PPO 的 Critic 网络，保证 Advantage 的计算不受污染。防“冷启动灾难”：非线性高斯预热 (Gaussian Warm-up)机制：好奇心权重 $\beta$ 挂载了一个随时间增长的系数 $1 - \exp(-(t/T)^2)$。作用：在网络权重完全随机的混沌初期，极其克制地压制噪声，当网络具备基础评估能力后，再平滑地交出探索权限。阶段四：⚔️ 策略演化 (PPO Optimization)经过上述重重洗礼，极其平滑、稠密且指向明确的融合奖励 $r_{mixed}$ 被送入标准 MAPPO 主干，通过 GAE 优势计算与 PPO 截断更新，完成策略的最终进化。📂 核心代码结构映射文件名 / 类名物理意义与职责mappo.py $\rightarrow$ MAPPO算法主脑。统筹 Actor-Critic 优化与 ARG 机制的生命周期。mappo.py $\rightarrow$ RewardBufferGate安检员。负责维护得分基线与生成物理截断掩码。arg_net.py $\rightarrow$ Time_Agent_Transformer时空解构器。执行 $Q \cdot K^T$ 寻优，输出高质量的信用分配蓝图。b_net.py $\rightarrow$ GlobalRewardPredictor好奇心源泉。持续被 Target 网络平滑追踪，产生预测误差。runner.py $\rightarrow$ worker_process平行宇宙。通过多进程无锁采样，打破 MARL 探索的效率瓶颈。🛠️ 数据维度流动备忘录 (Dimension Flow)在阅读或修改 Time_Agent_Transformer 时，请时刻牢记张量的物理视角转换：[B, N, T, D]：上帝视角的原始物理世界录像。[B*N, T, D]：抽离时间线。每个智能体独自审视自己的过去（Temporal Attention）。[B*T, N, D]：切出横截面。所有人站在同一帧里互相确认眼神（Agent Attention）。[B, T, 1]：坍缩与标量化。抹平个体差异，得出这一秒全队的探索奖金。📊 监控与实验 (W&B Logging)代码已深度接入 wandb，建议重点关注以下底层指标以评估系统的健康度：ARG/gate_pass_rate：门控放行率（通常在探索初期较高，收敛后降低）。ARG/dynamic_beta：观察高斯预热曲线是否按预期平滑展开。ARG/arg_loss_var：方差损失（如果一直为 0，说明 ARG 网络退化成了平均主义）。
+# ARG-MAPPO: Spatiotemporal Attention-Driven Intrinsic Motivation
+A MARL (Multi-Agent Reinforcement Learning) algorithm framework deeply customized with MAPPO as the backbone, integrated with AREL (Agent-Temporal Attention) core ideas, and a creative intrinsic motivation (curiosity) exploration mechanism based on **Global Surprise Allocation**.
+
+## 🧠 Core Architecture
+The information flow of the algorithm follows strict tensor dimensionality reduction and reconstruction logic, and the entire learning process is divided into four progressive stages:
+
+### Stage 1: Curiosity Generation (🔍 Surprise Production)
+- **Component**: GlobalRewardPredictor ($B\_Net$)
+- **Underlying Logic**: Define "unknown" by predicting the true environmental reward $r$ based on the current state $s$ and joint action $u$. Local Surprise is defined when the network fails to predict environmental dynamics (large prediction error).
+- **Calculation Goal**: Collect prediction errors across an entire trajectory and sum to get the total episode surprise $E_{total}$.
+
+### Stage 2: Spatiotemporal Redistribution (🌌 Credit Assignment)
+- **Component**: Time_Agent_Transformer ($ARG\_Net$)
+- **Underlying Logic**: Allocate total surprise to specific timesteps and agents
+- **Feature Extraction**: Project high-dimensional physical observations $E$ to semantic latent space via MLP
+- **Key Processes**:
+  - **Temporal Attention**: Add causality mask to find "turning points" in time series
+  - **Agent Attention**: Calculate interaction intensity between agents at the same timestep to identify "key agents"
+  - **Permutation-Invariant Collapse (Deep Sets)**: Collapse $Z$ matrix (fused historical and peer features) to get predicted intrinsic reward $\hat{r}_t$ for each timestep
+- **Dual Constraint Optimization**:
+  - Regression alignment: $\sum \hat{r}_t \approx E_{total}$ (total score must match)
+  - Variance regularization: $\omega \cdot Var(\hat{r}_t)$ (avoid equal distribution, enforce score differentiation)
+
+### Stage 3: Triple Defense System (🛡️ Underlying Protection)
+Direct injection of curiosity into PPO is catastrophic. Three defense mechanisms are deployed before reward fusion ($r_{mixed} = r + \beta * e_predict$):
+
+| Defense Mechanism | Implementation | Purpose |
+|-------------------|----------------|---------|
+| RewardBufferGate (Anti-"Noisy TV") | Maintain sliding queue of last 320 episodes' scores as baseline | Truncate curiosity reward (multiply by 0) if agents act randomly for surprise (environmental score below average). Only "valuable breakthrough" surprises are allowed. |
+| Dynamic Batch Normalization (Anti-PPO Value Estimation Degradation) | Local $\mu=0, \sigma=1$ normalization on gated intrinsic rewards with hard extremum truncation | Prevent extremely high variance curiosity rewards from corrupting PPO Critic network and Advantage calculation |
+| Nonlinear Gaussian Warm-up (Anti-Cold Start Disaster) | Curiosity weight $\beta$ attached to time-growth coefficient $1 - \exp(-(t/T)^2)$ | Suppress noise in early chaotic stage (random network weights), smoothly release exploration authority when network has basic evaluation capability |
+
+### Stage 4: PPO Optimization (⚔️ Policy Evolution)
+The smoothed, dense, and targeted fused reward $r_{mixed}$ is fed into the standard MAPPO backbone, completing policy evolution through GAE advantage calculation and PPO clipped update.
+
+## 📂 Code Structure Mapping
+| File/Class Name | Physical Meaning & Responsibility |
+|-----------------|------------------------------------|
+| `mappo.py` -> MAPPO | Core controller of the algorithm. Coordinates Actor-Critic optimization and ARG mechanism lifecycle. |
+| `mappo.py` -> RewardBufferGate | Security inspector. Maintains score baseline and generates physical truncation masks. |
+| `arg_net.py` -> Time_Agent_Transformer | Spatiotemporal deconstructor. Executes $Q \cdot K^T$ optimization and outputs high-quality credit assignment blueprint. |
+| `b_net.py` -> GlobalRewardPredictor | Source of curiosity. Continuously tracked by Target network to generate prediction errors. |
+| `runner.py` -> worker_process | Parallel sampling process. Breaks MARL exploration efficiency bottleneck through lock-free multiprocess sampling. |
+
+## 🛠️ Dimension Flow Memo
+When reading/modifying Time_Agent_Transformer, keep track of tensor dimension transformations (physical perspective):
+
+| Dimension | Physical Meaning |
+|-----------|------------------|
+| `[B, N, T, D]` | God's-eye view of raw physical world observations (Batch, Num-agents, Timesteps, Dimension) |
+| `[B*N, T, D]` | Isolated timeline. Each agent independently reviews its own past (Temporal Attention) |
+| `[B*T, N, D]` | Cross-section view. All agents interact at the same timestep (Agent Attention) |
+| `[B, T, 1]` | Collapsed scalarization. Eliminate individual differences to get team exploration bonus for each timestep |
+
+## 📊 Monitoring & Experimentation (W&B Logging)
+The code is deeply integrated with Weights & Biases (wandb). Focus on these key metrics to evaluate system health:
+
+| Metric | Interpretation |
+|--------|----------------|
+| `ARG/gate_pass_rate` | Gate pass rate (typically high in early exploration, decreases after convergence) |
+| `ARG/dynamic_beta` | Gaussian warm-up curve (should expand smoothly as expected) |
+| `ARG/arg_loss_var` | Variance loss (if consistently 0, ARG network degenerates to equal distribution) |
+
+### 总结
+1. ARG-MAPPO 以 MAPPO 为基础，通过时空注意力机制实现全局惊奇度的智能分配，构建了鲁棒的多智能体内在动机探索框架
+2. 三重防御装甲（奖励门控、动态标准化、高斯预热）解决了多智能体好奇心探索中的不稳定性问题
+3. 核心监控指标可有效评估算法探索效率和稳定性，重点关注门控放行率、动态beta值和方差损失
