@@ -1,3 +1,7 @@
+## 语言版本
+- [英文原版](README.md)
+- [中文版本](README_zh.md)
+
 # ARG-MAPPO: Spatiotemporal Attention-Driven Intrinsic Motivation
 A MARL (Multi-Agent Reinforcement Learning) algorithm framework deeply customized with MAPPO as the backbone, integrated with AREL (Agent-Temporal Attention) core ideas, and a creative intrinsic motivation (curiosity) exploration mechanism based on **Global Surprise Allocation**.
 
