@@ -1,0 +1,8 @@
+# 典型的强化学习忽略项
+results/
+model/
+*.pth
+*.npy
+__pycache__/
+.ipynb_checkpoints/
+wandb/
